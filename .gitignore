@@ -27,3 +27,6 @@ web-ext.config.ts
 *.sw?
 .env
 .env.production
+
+# Local SQLite dev database
+server/prisma/dev.db

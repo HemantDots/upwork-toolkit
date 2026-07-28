@@ -99,7 +99,7 @@ const Layout = () => {
               component={RouterLink}
               sx={{ mr: 2, borderRadius: 0, px: 0.75, alignSelf: 'stretch' }}
             >
-              Upwork Toolkit
+              Upwork Job Watcher
             </Button>
 
             <Box ref={headerContainer} sx={{ flexGrow: 1 }}></Box>

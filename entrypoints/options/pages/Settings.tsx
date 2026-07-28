@@ -15,6 +15,7 @@ import {
   MoreTime,
   OpenInNew,
   PowerSettingsNew,
+  TableChart,
   VolumeUp,
 } from '@mui/icons-material'
 import {
@@ -113,6 +114,26 @@ const Settings = () => {
           <ListItemText
             primary="Enabled"
             secondary="Leave it on to receive notifications"
+          />
+        </ListItem>
+
+        <ListItem
+          secondaryAction={
+            <Button
+              endIcon={<OpenInNew />}
+              onClick={() => browser.tabs.create({ url: 'dashboard.html' })}
+            >
+              Open
+            </Button>
+          }
+        >
+          <ListItemIcon>
+            <TableChart />
+          </ListItemIcon>
+
+          <ListItemText
+            primary="Live job dashboard"
+            secondary="Every job fetched, filterable and updating in real time — opens in a new tab"
           />
         </ListItem>
 

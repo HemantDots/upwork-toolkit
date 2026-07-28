@@ -3,6 +3,7 @@ import { ErrorType } from '@/utils/errors'
 import logger from '@/utils/logger'
 import { captureException } from '@/utils/sentry'
 import timer from '@/utils/timer'
+import { proposalUrl, viewUrl } from '@/utils/upworkUrls'
 import axios, { AxiosResponse } from 'axios'
 import isString from 'lodash/isString'
 
@@ -323,11 +324,6 @@ const getJobs = async (feedType: FeedType) => {
     }
   }
 }
-
-const viewUrl = (id: string) => `https://upwork.com/jobs/${id}`
-
-const proposalUrl = (id: string) =>
-  `https://upwork.com/ab/proposals/job/${id}/apply`
 
 const getUsernameToken = () =>
   getCookieToken({

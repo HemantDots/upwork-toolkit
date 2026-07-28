@@ -4,6 +4,7 @@ import colors from '@/utils/colors'
 import { ErrorType } from '@/utils/errors'
 import extension from '@/utils/extension'
 import stateStorage from '@/utils/globalState'
+import jobHistory from '@/utils/jobHistory'
 import jobStorage from '@/utils/jobs'
 import logger from '@/utils/logger'
 import notifications from '@/utils/notifications'
@@ -104,10 +105,12 @@ const fetchJobs = async () => {
     (job) => job.ciphertext
   )
 
+  const newlyFetchedJobs = newBatch.filter(
+    (job) => !oldBatchIds.includes(job.ciphertext)
+  )
+
   const newProcessedBatch = [
-    ...newBatch
-      .filter((job) => !oldBatchIds.includes(job.ciphertext))
-      .map((job) => ({ ...job, __isSeen: false })),
+    ...newlyFetchedJobs.map((job) => ({ ...job, __isSeen: false })),
     ...(oldBatch ?? []),
   ].slice(0, 50)
 
@@ -131,6 +134,23 @@ const fetchJobs = async () => {
         cycleId,
         'No new jobs, exiting...',
       ]),
+
+    // Save the whole current batch, not just newlyFetchedJobs — that keeps
+    // the dashboard in sync with whatever's currently in the Jobs tab from
+    // the very next cycle, rather than only capturing jobs going forward.
+    // Re-saving already-known jobs is harmless: saveJobs is an upsert that
+    // preserves each job's original firstSeenAt.
+    jobHistory.saveJobs(newProcessedBatch).catch(
+      (error) =>
+        logger.info([
+          extension.Cycles.FETCH_JOBS,
+          cycleId,
+          `Job history save failed: ${error}`,
+        ])
+      // Best-effort only — the history store is never a dependency for
+      // badges/notifications, so failures here must not surface as Sentry
+      // errors or interrupt the cycle.
+    ),
   ])
 
   if (!hasNewUnseenJobs) return

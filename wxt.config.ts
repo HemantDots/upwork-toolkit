@@ -4,8 +4,8 @@ import { sentryVitePlugin } from '@sentry/vite-plugin'
 // See https://wxt.dev/api/config.html
 export default defineConfig({
   manifest: {
-    name: 'Upwork toolkit - your own freelance assistant',
-    description: 'Save time and earn more with Upwork toolkit.',
+    name: 'Upwork Job Watcher',
+    description: 'Real-time Upwork job alerts, plus AI-assisted cover letter drafting.',
     action: {
       default_icon: 'icon/32.png',
     },
