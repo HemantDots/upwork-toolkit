@@ -11,11 +11,9 @@ import timer from '@/utils/timer'
 import {
   DarkMode,
   DynamicFeed,
-  Launch,
   MoreTime,
   OpenInNew,
   PowerSettingsNew,
-  TableChart,
   VolumeUp,
 } from '@mui/icons-material'
 import {
@@ -114,26 +112,6 @@ const Settings = () => {
           <ListItemText
             primary="Enabled"
             secondary="Leave it on to receive notifications"
-          />
-        </ListItem>
-
-        <ListItem
-          secondaryAction={
-            <Button
-              endIcon={<OpenInNew />}
-              onClick={() => browser.tabs.create({ url: 'dashboard.html' })}
-            >
-              Open
-            </Button>
-          }
-        >
-          <ListItemIcon>
-            <TableChart />
-          </ListItemIcon>
-
-          <ListItemText
-            primary="Live job dashboard"
-            secondary="Every job fetched, filterable and updating in real time — opens in a new tab"
           />
         </ListItem>
 
@@ -320,26 +298,6 @@ const Settings = () => {
             </Box>
           </ListItem>
         </Collapse>
-
-        <ListItem
-          secondaryAction={
-            <Switch
-              onChange={(e, checked) =>
-                storage.setState({ openProposalPage: checked })
-              }
-              defaultChecked={storage.globalState.openProposalPage}
-            />
-          }
-        >
-          <ListItemIcon>
-            <Launch />
-          </ListItemIcon>
-
-          <ListItemText
-            primary="Open proposal page on job click"
-            secondary="Proposal page will be opened in a new tab along with job details page"
-          />
-        </ListItem>
 
         <ListItem
           secondaryAction={

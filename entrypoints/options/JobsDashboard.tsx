@@ -16,7 +16,6 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Container,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -171,7 +170,7 @@ const CSV_COLUMNS: { header: string; get: (job: StoredJob) => string | number | 
 const escapeCsvValue = (value: string | number | null) =>
   `"${String(value ?? '').replace(/"/g, '""')}"`
 
-const Dashboard = () => {
+const JobsDashboard = () => {
   const theme = useTheme()
 
   const [jobs, setJobs] = useState<StoredJob[] | null>(null)
@@ -217,8 +216,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     // Capture the *previous* visit before overwriting it — that's the
-    // cutoff used to highlight "new since you last looked," matching the
-    // main Jobs tab's unseen-highlighting behavior.
+    // cutoff used to highlight "new since you last looked."
     dashboardVisit.get().then(setLastVisitedAt)
     dashboardVisit.save(new Date().toISOString())
   }, [])
@@ -387,7 +385,7 @@ const Dashboard = () => {
   )
 
   return (
-    <Container maxWidth="xl" sx={{ py: 3 }}>
+    <Box>
       <Toolbar disableGutters sx={{ mb: 2, gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
           Live Job Dashboard
@@ -427,9 +425,11 @@ const Dashboard = () => {
         <Box
           sx={{
             display: 'flex',
-            flexWrap: 'wrap',
-            gap: 2,
+            flexWrap: 'nowrap',
+            overflowX: 'auto',
+            gap: 1.5,
             alignItems: 'center',
+            pb: 0.5,
           }}
         >
           <TextField
@@ -438,7 +438,7 @@ const Dashboard = () => {
             placeholder="e.g. react, vue"
             value={titleSearch}
             onChange={(e) => setTitleSearch(e.target.value)}
-            sx={{ minWidth: 200 }}
+            sx={{ minWidth: 170, flexShrink: 0 }}
           />
 
           <TextField
@@ -447,14 +447,14 @@ const Dashboard = () => {
             placeholder="e.g. react, vue"
             value={descriptionSearch}
             onChange={(e) => setDescriptionSearch(e.target.value)}
-            sx={{ minWidth: 200 }}
+            sx={{ minWidth: 170, flexShrink: 0 }}
           />
 
           <Select
             size="small"
             value={type}
             onChange={(e) => setType(e.target.value)}
-            sx={{ minWidth: 160 }}
+            sx={{ minWidth: 130, flexShrink: 0 }}
           >
             <MenuItem value={ALL}>All types</MenuItem>
             {types.map((t) => (
@@ -468,7 +468,7 @@ const Dashboard = () => {
             size="small"
             value={experienceLevel}
             onChange={(e) => setExperienceLevel(e.target.value)}
-            sx={{ minWidth: 180 }}
+            sx={{ minWidth: 150, flexShrink: 0 }}
           >
             <MenuItem value={ALL}>All experience levels</MenuItem>
             {experienceLevels.map((level) => (
@@ -483,7 +483,7 @@ const Dashboard = () => {
             options={skills}
             value={skill}
             onChange={(e, value) => setSkill(value)}
-            sx={{ minWidth: 200 }}
+            sx={{ minWidth: 150, flexShrink: 0 }}
             renderInput={(params) => <TextField {...params} label="Skill" />}
           />
 
@@ -491,7 +491,7 @@ const Dashboard = () => {
             size="small"
             value={country}
             onChange={(e) => setCountry(e.target.value)}
-            sx={{ minWidth: 160 }}
+            sx={{ minWidth: 130, flexShrink: 0 }}
           >
             <MenuItem value={ALL}>All countries</MenuItem>
             {countries.map((c) => (
@@ -505,19 +505,23 @@ const Dashboard = () => {
             label="First seen from"
             value={dateFrom}
             onChange={setDateFrom}
-            slotProps={{ textField: { size: 'small', sx: { minWidth: 170 } } }}
+            slotProps={{
+              textField: { size: 'small', sx: { minWidth: 150, flexShrink: 0 } },
+            }}
           />
 
           <DatePicker
             label="First seen to"
             value={dateTo}
             onChange={setDateTo}
-            slotProps={{ textField: { size: 'small', sx: { minWidth: 170 } } }}
+            slotProps={{
+              textField: { size: 'small', sx: { minWidth: 150, flexShrink: 0 } },
+            }}
           />
 
           {hasActiveFilters && (
             <Tooltip title="Clear filters">
-              <IconButton onClick={clearFilters} size="small">
+              <IconButton onClick={clearFilters} size="small" sx={{ flexShrink: 0 }}>
                 <Clear />
               </IconButton>
             </Tooltip>
@@ -743,8 +747,8 @@ const Dashboard = () => {
           </>
         )}
       </Dialog>
-    </Container>
+    </Box>
   )
 }
 
-export default Dashboard
+export default JobsDashboard

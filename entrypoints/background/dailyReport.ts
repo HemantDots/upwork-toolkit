@@ -47,7 +47,6 @@ const dailyReport = async () => {
     event: analytics.Event.DAILY_REPORT,
     params: {
       enabled: globalState.enabled,
-      compactList: globalState.compactList,
       darkMode: globalState.darkMode,
       soundVolume: globalState.soundSettings.volume,
       soundEnabled: globalState.soundSettings.enabled,

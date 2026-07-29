@@ -1,9 +1,6 @@
 import { browser } from '#imports'
-import upworkApi, { Job } from '@/api/upwork'
 import Storage, { StorageInterface } from '@/contexts/storage'
-import GirlReading from '@/icons/GirlReading'
 import alerts, { Alert } from '@/utils/alerts'
-import analytics from '@/utils/analytics'
 import colors from '@/utils/colors'
 import { ErrorType } from '@/utils/errors'
 import extension from '@/utils/extension'
@@ -12,18 +9,12 @@ import {
   AlertTitle,
   Box,
   Button,
-  FormControlLabel,
   Link,
   Alert as MuiAlert,
-  Portal,
-  Switch,
-  Typography,
 } from '@mui/material'
 import { useSnackbar } from 'notistack'
 import { useContext, useEffect, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
-import JobList from '../JobList'
-import { LayoutContext } from './Layout'
+import JobsDashboard from '../JobsDashboard'
 import { eventEmitter, Event } from '@/utils/events'
 
 const alertInterval = extension.debugEnabled
@@ -33,9 +24,7 @@ const alertInterval = extension.debugEnabled
 const Home = () => {
   const { enqueueSnackbar } = useSnackbar()
   const storage = useContext<StorageInterface>(Storage)
-  const { headerContainer } = useOutletContext<LayoutContext>()
 
-  const [debugError, setDebugError] = useState<any>([])
   const [unseenIds, setUnseenIds] = useState<string[]>([])
 
   const jobsHash = Array.isArray(storage.jobs)
@@ -82,17 +71,6 @@ const Home = () => {
         { id: alert.id, read_at: Date.now() },
       ],
     })
-
-  const onJobClick = (job: Job) => {
-    storage.globalState.openProposalPage &&
-      window.open(upworkApi.proposalUrl(job.ciphertext), '_blank')
-
-    window.open(upworkApi.viewUrl(job.ciphertext), '_blank')
-
-    setUnseenIds((unseenIds) => unseenIds.filter((id) => id !== job.ciphertext))
-
-    analytics.sendEvent({ event: analytics.Event.JOB_CLICK })
-  }
 
   const renderAlert = () => {
     if (!storage.globalState.enabled) {
@@ -294,60 +272,9 @@ const Home = () => {
 
   return (
     <>
-      {headerContainer.current && storage.jobs.length > 0 && (
-        <Portal container={headerContainer.current}>
-          <Box sx={{ textAlign: 'right' }}>
-            <FormControlLabel
-              label="Compact list"
-              labelPlacement="start"
-              slotProps={{ typography: { sx: { fontWeight: 500 } } }}
-              control={
-                <Switch
-                  color="secondary"
-                  onChange={(event, compactList) =>
-                    storage.setState({ compactList })
-                  }
-                  defaultChecked={storage.globalState.compactList}
-                  sx={{ '& .MuiSwitch-track': { backgroundColor: '#fff' } }}
-                />
-              }
-            />
-          </Box>
-        </Portal>
-      )}
-
       {alert}
 
-      {extension.debugEnabled && (
-        <>
-          <Button onClick={() => setDebugError(null)}>Trigger error</Button>
-          {debugError.map((error: any) => error)}
-        </>
-      )}
-
-      {!lastCycleError &&
-        !unreadAlert &&
-        storage.jobs.length === 0 &&
-        !alert && (
-          <Box sx={{ textAlign: 'center' }}>
-            <GirlReading sx={{ fontSize: '12rem' }} />
-
-            <Typography variant="h6" component="h6">
-              Sit back and relax
-            </Typography>
-
-            <Typography sx={{ mt: 0.5 }}>
-              Extension will notify you when new jobs appear
-            </Typography>
-          </Box>
-        )}
-
-      <JobList
-        jobs={storage.jobs}
-        unseenIds={unseenIds}
-        onJobClick={onJobClick}
-        detailed={!storage.globalState.compactList}
-      />
+      <JobsDashboard />
     </>
   )
 }

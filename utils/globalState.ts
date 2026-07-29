@@ -22,10 +22,8 @@ export type GlobalState = {
   instanceId: string
   enabled: boolean
   darkMode: DarkMode
-  compactList: boolean
   // @deprecated
   readAlertIds: string[]
-  openProposalPage: boolean
   feedType: FeedType
   lastLoginAttemptAt: number | null
   lastCaptchaAttemptAt: number | null
@@ -53,10 +51,8 @@ const getDefaultState = (): GlobalState => ({
   instanceId: v4(),
   enabled: true,
   darkMode: 'system',
-  compactList: true,
   readAlerts: [],
   readAlertIds: [],
-  openProposalPage: true,
   lastLoginAttemptAt: null,
   lastCaptchaAttemptAt: null,
   feedType: FeedType.MyFeed,
