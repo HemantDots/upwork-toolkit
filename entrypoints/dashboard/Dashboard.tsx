@@ -111,7 +111,8 @@ const Dashboard = () => {
   const [selectedJob, setSelectedJob] = useState<StoredJob | null>(null)
   const [lastVisitedAt, setLastVisitedAt] = useState<string | null>(null)
 
-  const [search, setSearch] = useState('')
+  const [titleSearch, setTitleSearch] = useState('')
+  const [descriptionSearch, setDescriptionSearch] = useState('')
   const [type, setType] = useState(ALL)
   const [experienceLevel, setExperienceLevel] = useState(ALL)
   const [skill, setSkill] = useState<string | null>(null)
@@ -156,7 +157,18 @@ const Dashboard = () => {
 
   useEffect(() => {
     setPage(0)
-  }, [search, type, experienceLevel, skill, country, dateFrom, dateTo, sortField, sortDirection])
+  }, [
+    titleSearch,
+    descriptionSearch,
+    type,
+    experienceLevel,
+    skill,
+    country,
+    dateFrom,
+    dateTo,
+    sortField,
+    sortDirection,
+  ])
 
   const { types, experienceLevels, skills, countries } = useMemo(() => {
     const source = jobs ?? []
@@ -173,13 +185,15 @@ const Dashboard = () => {
   }, [jobs])
 
   const filteredJobs = useMemo(() => {
-    const query = search.trim().toLowerCase()
+    const titleQuery = titleSearch.trim().toLowerCase()
+    const descriptionQuery = descriptionSearch.trim().toLowerCase()
 
     return (jobs ?? []).filter((job) => {
+      if (titleQuery && !job.title.toLowerCase().includes(titleQuery)) return false
+
       if (
-        query &&
-        !job.title.toLowerCase().includes(query) &&
-        !job.description.toLowerCase().includes(query)
+        descriptionQuery &&
+        !stripHtml(job.description).toLowerCase().includes(descriptionQuery)
       ) {
         return false
       }
@@ -195,7 +209,17 @@ const Dashboard = () => {
 
       return true
     })
-  }, [jobs, search, type, experienceLevel, skill, country, dateFrom, dateTo])
+  }, [
+    jobs,
+    titleSearch,
+    descriptionSearch,
+    type,
+    experienceLevel,
+    skill,
+    country,
+    dateFrom,
+    dateTo,
+  ])
 
   const sortedJobs = useMemo(() => {
     const factor = sortDirection === 'asc' ? 1 : -1
@@ -230,10 +254,18 @@ const Dashboard = () => {
   }
 
   const hasActiveFilters =
-    search || type !== ALL || experienceLevel !== ALL || skill || country !== ALL || dateFrom || dateTo
+    titleSearch ||
+    descriptionSearch ||
+    type !== ALL ||
+    experienceLevel !== ALL ||
+    skill ||
+    country !== ALL ||
+    dateFrom ||
+    dateTo
 
   const clearFilters = () => {
-    setSearch('')
+    setTitleSearch('')
+    setDescriptionSearch('')
     setType(ALL)
     setExperienceLevel(ALL)
     setSkill(null)
@@ -340,10 +372,18 @@ const Dashboard = () => {
         >
           <TextField
             size="small"
-            label="Search title/description"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            sx={{ minWidth: 240 }}
+            label="Search title"
+            value={titleSearch}
+            onChange={(e) => setTitleSearch(e.target.value)}
+            sx={{ minWidth: 200 }}
+          />
+
+          <TextField
+            size="small"
+            label="Search description"
+            value={descriptionSearch}
+            onChange={(e) => setDescriptionSearch(e.target.value)}
+            sx={{ minWidth: 200 }}
           />
 
           <Select
