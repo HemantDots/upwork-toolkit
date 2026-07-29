@@ -1,9 +1,21 @@
+import colors from '@/utils/colors'
+import dashboardVisit from '@/utils/dashboardVisit'
 import jobHistory, { StoredJob } from '@/utils/jobHistory'
-import { Clear, Refresh } from '@mui/icons-material'
 import {
+  ArrowDownward,
+  ArrowUpward,
+  Clear,
+  Description as DescriptionIcon,
+  Refresh,
+  TableChart,
+} from '@mui/icons-material'
+import {
+  Alert,
   Autocomplete,
   Box,
+  Button,
   Chip,
+  CircularProgress,
   Container,
   Dialog,
   DialogContent,
@@ -18,17 +30,23 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Toolbar,
   Tooltip,
   Typography,
+  useTheme,
 } from '@mui/material'
 import { DatePicker } from '@mui/x-date-pickers'
 import { format, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns'
+import { Document, HeadingLevel, Packer, Paragraph } from 'docx'
 import { useEffect, useMemo, useState } from 'react'
 
 const ALL = '__all__'
+const ROWS_PER_PAGE_OPTIONS = [25, 50, 100, 250]
+
+type SortableField = Exclude<keyof StoredJob, 'skills'>
 
 const cell = (value: string | number | null | undefined) =>
   value === null || value === undefined || value === '' ? '—' : value
@@ -36,9 +54,62 @@ const cell = (value: string | number | null | undefined) =>
 const formatDate = (value: string | null) =>
   value ? format(new Date(value), 'MMM d, yyyy HH:mm') : '—'
 
+const stripHtml = (value: string) =>
+  value
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const formatBudgetPlain = (job: StoredJob) => {
+  if (job.fixedPriceAmount) return `$${job.fixedPriceAmount} fixed`
+  if (job.hourlyBudgetMin) return `$${job.hourlyBudgetMin}-$${job.hourlyBudgetMax}/hr`
+  return '—'
+}
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const CSV_COLUMNS: { header: string; get: (job: StoredJob) => string | number | null }[] = [
+  { header: 'Title', get: (j) => j.title },
+  { header: 'Type', get: (j) => j.type },
+  { header: 'Description', get: (j) => stripHtml(j.description) },
+  { header: 'Experience Level', get: (j) => j.experienceLevel },
+  { header: 'Weekly Hours', get: (j) => j.weeklyHours },
+  { header: 'Duration Label', get: (j) => j.durationLabel },
+  { header: 'Duration Code', get: (j) => j.durationCode },
+  { header: 'Proposals Tier', get: (j) => j.proposalsTier },
+  { header: 'Fixed Price', get: (j) => j.fixedPriceAmount },
+  { header: 'Hourly Min', get: (j) => j.hourlyBudgetMin },
+  { header: 'Hourly Max', get: (j) => j.hourlyBudgetMax },
+  { header: 'Payment Verified', get: (j) => j.clientPaymentVerificationStatus },
+  { header: 'Client Feedback', get: (j) => j.clientTotalFeedback },
+  { header: 'Client Spent', get: (j) => j.clientTotalSpent },
+  { header: 'Client Country', get: (j) => j.clientCountry },
+  { header: 'Job URL', get: (j) => j.jobUrl },
+  { header: 'Proposal URL', get: (j) => j.proposalUrl },
+  { header: 'Skills', get: (j) => j.skills.join('; ') },
+  { header: 'Renewed On', get: (j) => j.renewedOn },
+  { header: 'Created On', get: (j) => j.createdOn },
+  { header: 'First Seen', get: (j) => j.firstSeenAt },
+  { header: 'Updated At', get: (j) => j.updatedAt },
+]
+
+const escapeCsvValue = (value: string | number | null) =>
+  `"${String(value ?? '').replace(/"/g, '""')}"`
+
 const Dashboard = () => {
+  const theme = useTheme()
+
   const [jobs, setJobs] = useState<StoredJob[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedJob, setSelectedJob] = useState<StoredJob | null>(null)
+  const [lastVisitedAt, setLastVisitedAt] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')
   const [type, setType] = useState(ALL)
@@ -48,7 +119,22 @@ const Dashboard = () => {
   const [dateFrom, setDateFrom] = useState<Date | null>(null)
   const [dateTo, setDateTo] = useState<Date | null>(null)
 
-  const load = () => jobHistory.getAll().then(setJobs)
+  const [sortField, setSortField] = useState<SortableField>('firstSeenAt')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
+
+  const load = () =>
+    jobHistory
+      .getAll()
+      .then((data) => {
+        setJobs(data)
+        setLoadError(null)
+      })
+      .catch((error) =>
+        setLoadError(error instanceof Error ? error.message : String(error))
+      )
 
   useEffect(() => {
     load()
@@ -59,6 +145,18 @@ const Dashboard = () => {
     const interval = setInterval(load, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    // Capture the *previous* visit before overwriting it — that's the
+    // cutoff used to highlight "new since you last looked," matching the
+    // main Jobs tab's unseen-highlighting behavior.
+    dashboardVisit.get().then(setLastVisitedAt)
+    dashboardVisit.save(new Date().toISOString())
+  }, [])
+
+  useEffect(() => {
+    setPage(0)
+  }, [search, type, experienceLevel, skill, country, dateFrom, dateTo, sortField, sortDirection])
 
   const { types, experienceLevels, skills, countries } = useMemo(() => {
     const source = jobs ?? []
@@ -99,6 +197,38 @@ const Dashboard = () => {
     })
   }, [jobs, search, type, experienceLevel, skill, country, dateFrom, dateTo])
 
+  const sortedJobs = useMemo(() => {
+    const factor = sortDirection === 'asc' ? 1 : -1
+
+    return [...filteredJobs].sort((a, b) => {
+      const av = a[sortField]
+      const bv = b[sortField]
+
+      if (av === null || av === undefined) return bv === null || bv === undefined ? 0 : 1
+      if (bv === null || bv === undefined) return -1
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor
+
+      return String(av).localeCompare(String(bv)) * factor
+    })
+  }, [filteredJobs, sortField, sortDirection])
+
+  const paginatedJobs = useMemo(() => {
+    const start = page * rowsPerPage
+    return sortedJobs.slice(start, start + rowsPerPage)
+  }, [sortedJobs, page, rowsPerPage])
+
+  const isNewJob = (job: StoredJob) =>
+    lastVisitedAt !== null && job.firstSeenAt > lastVisitedAt
+
+  const toggleSort = (field: SortableField) => {
+    if (sortField === field) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
   const hasActiveFilters =
     search || type !== ALL || experienceLevel !== ALL || skill || country !== ALL || dateFrom || dateTo
 
@@ -112,22 +242,79 @@ const Dashboard = () => {
     setDateTo(null)
   }
 
-  if (jobs === null) return null
+  const exportCsv = () => {
+    const rows = sortedJobs.map((job) =>
+      CSV_COLUMNS.map((col) => escapeCsvValue(col.get(job))).join(',')
+    )
+    const csv = [CSV_COLUMNS.map((col) => escapeCsvValue(col.header)).join(','), ...rows].join(
+      '\n'
+    )
+    downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `upwork-jobs-${Date.now()}.csv`)
+  }
+
+  const exportDocx = async () => {
+    const doc = new Document({
+      sections: [
+        {
+          children: sortedJobs.flatMap((job) => [
+            new Paragraph({ text: job.title, heading: HeadingLevel.HEADING_2 }),
+            new Paragraph({
+              text: `${job.type} • ${job.experienceLevel ?? '—'} • ${formatBudgetPlain(job)} • ${job.clientCountry ?? '—'}`,
+            }),
+            new Paragraph({ text: stripHtml(job.description) }),
+            new Paragraph({ text: `Skills: ${job.skills.join(', ') || '—'}` }),
+            new Paragraph({ text: `First seen: ${formatDate(job.firstSeenAt)}` }),
+            new Paragraph({ text: job.jobUrl }),
+            new Paragraph({ text: '' }),
+          ]),
+        },
+      ],
+    })
+
+    const blob = await Packer.toBlob(doc)
+    downloadBlob(blob, `upwork-jobs-${Date.now()}.docx`)
+  }
+
+  const SortableHeader = (props: { field: SortableField; label: string; width: number }) => (
+    <TableCell
+      sx={{ width: props.width, cursor: 'pointer', userSelect: 'none' }}
+      onClick={() => toggleSort(props.field)}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        {props.label}
+        {sortField === props.field &&
+          (sortDirection === 'asc' ? (
+            <ArrowUpward sx={{ fontSize: 14 }} />
+          ) : (
+            <ArrowDownward sx={{ fontSize: 14 }} />
+          ))}
+      </Box>
+    </TableCell>
+  )
 
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
-      <Toolbar disableGutters sx={{ mb: 2, gap: 2 }}>
+      <Toolbar disableGutters sx={{ mb: 2, gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
           Live Job Dashboard
         </Typography>
 
-        <Chip
-          label={`${filteredJobs.length} / ${jobs.length}`}
-          size="small"
-          color={hasActiveFilters ? 'primary' : 'default'}
-        />
+        {jobs !== null && (
+          <Chip
+            label={`${filteredJobs.length} / ${jobs.length}`}
+            size="small"
+            color={hasActiveFilters ? 'primary' : 'default'}
+          />
+        )}
 
         <Box sx={{ flexGrow: 1 }} />
+
+        <Button size="small" startIcon={<DescriptionIcon />} onClick={exportCsv} disabled={!jobs?.length}>
+          CSV
+        </Button>
+        <Button size="small" startIcon={<TableChart />} onClick={exportDocx} disabled={!jobs?.length}>
+          DOCX
+        </Button>
 
         <Tooltip title="Refresh now (auto-refreshes every 5s anyway)">
           <IconButton onClick={load}>
@@ -135,6 +322,12 @@ const Dashboard = () => {
           </IconButton>
         </Tooltip>
       </Toolbar>
+
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Couldn't load job data: {loadError}
+        </Alert>
+      )}
 
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
         <Box
@@ -228,7 +421,11 @@ const Dashboard = () => {
         </Box>
       </Paper>
 
-      {jobs.length === 0 ? (
+      {jobs === null ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : jobs.length === 0 ? (
         <Paper variant="outlined" sx={{ p: 3 }}>
           <Typography color="textSecondary">
             No jobs saved yet. This fills in automatically as the extension
@@ -236,121 +433,153 @@ const Dashboard = () => {
           </Typography>
         </Paper>
       ) : (
-        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
-          <Table
-            size="small"
-            sx={{
-              tableLayout: 'fixed',
-              '& td': {
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              },
-              // Headers wrap instead of truncating — several labels (e.g.
-              // "Duration code", "Payment verified") are longer than their
-              // column's data ever needs to be, so ellipsis was cutting the
-              // label itself off rather than just long data values.
-              '& th': {
-                whiteSpace: 'normal',
-                lineHeight: 1.3,
-                verticalAlign: 'bottom',
-              },
-            }}
-          >
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ width: 220 }}>Title</TableCell>
-                <TableCell sx={{ width: 90 }}>Type</TableCell>
-                <TableCell sx={{ width: 260 }}>Description</TableCell>
-                <TableCell sx={{ width: 130 }}>Experience level</TableCell>
-                <TableCell sx={{ width: 190 }}>Weekly hours</TableCell>
-                <TableCell sx={{ width: 160 }}>Duration label</TableCell>
-                <TableCell sx={{ width: 110 }}>Duration code</TableCell>
-                <TableCell sx={{ width: 130 }}>Proposals tier</TableCell>
-                <TableCell sx={{ width: 100 }}>Fixed price</TableCell>
-                <TableCell sx={{ width: 90 }}>Hourly min</TableCell>
-                <TableCell sx={{ width: 90 }}>Hourly max</TableCell>
-                <TableCell sx={{ width: 120 }}>Payment verified</TableCell>
-                <TableCell sx={{ width: 110 }}>Client feedback</TableCell>
-                <TableCell sx={{ width: 130 }}>Client spent</TableCell>
-                <TableCell sx={{ width: 170 }}>Client country</TableCell>
-                <TableCell sx={{ width: 70 }}>Job URL</TableCell>
-                <TableCell sx={{ width: 90 }}>Proposal URL</TableCell>
-                <TableCell sx={{ width: 220 }}>Skills</TableCell>
-                <TableCell sx={{ width: 185 }}>Renewed on</TableCell>
-                <TableCell sx={{ width: 185 }}>Created on</TableCell>
-                <TableCell sx={{ width: 185 }}>First seen</TableCell>
-                <TableCell sx={{ width: 185 }}>Updated at</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredJobs.map((job) => (
-                <TableRow key={job.ciphertext} hover>
-                  <TableCell
-                    onClick={() => setSelectedJob(job)}
-                    sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-                  >
-                    {job.title}
-                  </TableCell>
-                  <TableCell>{job.type}</TableCell>
-                  <TableCell
-                    onClick={() => setSelectedJob(job)}
-                    sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-                  >
-                    {job.description}
-                  </TableCell>
-                  <TableCell>{cell(job.experienceLevel)}</TableCell>
-                  <TableCell>{cell(job.weeklyHours)}</TableCell>
-                  <TableCell>{cell(job.durationLabel)}</TableCell>
-                  <TableCell>{cell(job.durationCode)}</TableCell>
-                  <TableCell>{cell(job.proposalsTier)}</TableCell>
-                  <TableCell>{job.fixedPriceAmount ? `$${job.fixedPriceAmount}` : '—'}</TableCell>
-                  <TableCell>{job.hourlyBudgetMin ? `$${job.hourlyBudgetMin}` : '—'}</TableCell>
-                  <TableCell>{job.hourlyBudgetMax ? `$${job.hourlyBudgetMax}` : '—'}</TableCell>
-                  <TableCell>
-                    {job.clientPaymentVerificationStatus === 1
-                      ? 'Yes'
-                      : job.clientPaymentVerificationStatus === 0
-                        ? 'No'
-                        : '—'}
-                  </TableCell>
-                  <TableCell>{cell(job.clientTotalFeedback)}</TableCell>
-                  <TableCell>
-                    {job.clientTotalSpent ? `$${job.clientTotalSpent}` : '—'}
-                  </TableCell>
-                  <TableCell>{cell(job.clientCountry)}</TableCell>
-                  <TableCell>
-                    <Link href={job.jobUrl} target="_blank" rel="noopener noreferrer">
-                      Open
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={job.proposalUrl} target="_blank" rel="noopener noreferrer">
-                      Open
-                    </Link>
-                  </TableCell>
-                  <TableCell sx={{ overflow: 'visible' }}>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {job.skills.length === 0 && '—'}
-                      {job.skills.slice(0, 3).map((s) => (
-                        <Chip key={s} size="small" label={s} />
-                      ))}
-                      {job.skills.length > 3 && (
-                        <Tooltip title={job.skills.slice(3).join(', ')}>
-                          <Chip size="small" label={`+${job.skills.length - 3}`} />
-                        </Tooltip>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>{formatDate(job.renewedOn)}</TableCell>
-                  <TableCell>{formatDate(job.createdOn)}</TableCell>
-                  <TableCell>{formatDate(job.firstSeenAt)}</TableCell>
-                  <TableCell>{formatDate(job.updatedAt)}</TableCell>
+        <Paper variant="outlined">
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table
+              size="small"
+              sx={{
+                tableLayout: 'fixed',
+                '& td': {
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                },
+                // Headers wrap instead of truncating — several labels (e.g.
+                // "Duration code", "Payment verified") are longer than their
+                // column's data ever needs to be, so ellipsis was cutting
+                // the label itself off rather than just long data values.
+                '& th': {
+                  whiteSpace: 'normal',
+                  lineHeight: 1.3,
+                  verticalAlign: 'bottom',
+                },
+              }}
+            >
+              <TableHead>
+                <TableRow>
+                  <SortableHeader field="title" label="Title" width={220} />
+                  <SortableHeader field="type" label="Type" width={90} />
+                  <SortableHeader field="description" label="Description" width={260} />
+                  <SortableHeader field="experienceLevel" label="Experience level" width={130} />
+                  <SortableHeader field="weeklyHours" label="Weekly hours" width={190} />
+                  <SortableHeader field="durationLabel" label="Duration label" width={160} />
+                  <SortableHeader field="durationCode" label="Duration code" width={110} />
+                  <SortableHeader field="proposalsTier" label="Proposals tier" width={130} />
+                  <SortableHeader field="fixedPriceAmount" label="Fixed price" width={100} />
+                  <SortableHeader field="hourlyBudgetMin" label="Hourly min" width={90} />
+                  <SortableHeader field="hourlyBudgetMax" label="Hourly max" width={90} />
+                  <SortableHeader
+                    field="clientPaymentVerificationStatus"
+                    label="Payment verified"
+                    width={120}
+                  />
+                  <SortableHeader field="clientTotalFeedback" label="Client feedback" width={110} />
+                  <SortableHeader field="clientTotalSpent" label="Client spent" width={130} />
+                  <SortableHeader field="clientCountry" label="Client country" width={170} />
+                  <TableCell sx={{ width: 70 }}>Job URL</TableCell>
+                  <TableCell sx={{ width: 90 }}>Proposal URL</TableCell>
+                  <TableCell sx={{ width: 220 }}>Skills</TableCell>
+                  <SortableHeader field="renewedOn" label="Renewed on" width={185} />
+                  <SortableHeader field="createdOn" label="Created on" width={185} />
+                  <SortableHeader field="firstSeenAt" label="First seen" width={185} />
+                  <SortableHeader field="updatedAt" label="Updated at" width={185} />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {paginatedJobs.map((job) => (
+                  <TableRow
+                    key={job.ciphertext}
+                    hover
+                    sx={
+                      isNewJob(job)
+                        ? {
+                            backgroundColor:
+                              theme.palette.mode === 'dark'
+                                ? colors.warningDark
+                                : colors.warning,
+                          }
+                        : undefined
+                    }
+                  >
+                    <TableCell
+                      onClick={() => setSelectedJob(job)}
+                      sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                    >
+                      {job.title}
+                    </TableCell>
+                    <TableCell>{job.type}</TableCell>
+                    <TableCell
+                      onClick={() => setSelectedJob(job)}
+                      sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                    >
+                      {job.description}
+                    </TableCell>
+                    <TableCell>{cell(job.experienceLevel)}</TableCell>
+                    <TableCell>{cell(job.weeklyHours)}</TableCell>
+                    <TableCell>{cell(job.durationLabel)}</TableCell>
+                    <TableCell>{cell(job.durationCode)}</TableCell>
+                    <TableCell>{cell(job.proposalsTier)}</TableCell>
+                    <TableCell>{job.fixedPriceAmount ? `$${job.fixedPriceAmount}` : '—'}</TableCell>
+                    <TableCell>{job.hourlyBudgetMin ? `$${job.hourlyBudgetMin}` : '—'}</TableCell>
+                    <TableCell>{job.hourlyBudgetMax ? `$${job.hourlyBudgetMax}` : '—'}</TableCell>
+                    <TableCell>
+                      {job.clientPaymentVerificationStatus === 1
+                        ? 'Yes'
+                        : job.clientPaymentVerificationStatus === 0
+                          ? 'No'
+                          : '—'}
+                    </TableCell>
+                    <TableCell>{cell(job.clientTotalFeedback)}</TableCell>
+                    <TableCell>
+                      {job.clientTotalSpent ? `$${job.clientTotalSpent}` : '—'}
+                    </TableCell>
+                    <TableCell>{cell(job.clientCountry)}</TableCell>
+                    <TableCell>
+                      <Link href={job.jobUrl} target="_blank" rel="noopener noreferrer">
+                        Open
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Link href={job.proposalUrl} target="_blank" rel="noopener noreferrer">
+                        Open
+                      </Link>
+                    </TableCell>
+                    <TableCell sx={{ overflow: 'visible' }}>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {job.skills.length === 0 && '—'}
+                        {job.skills.slice(0, 3).map((s) => (
+                          <Chip key={s} size="small" label={s} />
+                        ))}
+                        {job.skills.length > 3 && (
+                          <Tooltip title={job.skills.slice(3).join(', ')}>
+                            <Chip size="small" label={`+${job.skills.length - 3}`} />
+                          </Tooltip>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell>{formatDate(job.renewedOn)}</TableCell>
+                    <TableCell>{formatDate(job.createdOn)}</TableCell>
+                    <TableCell>{formatDate(job.firstSeenAt)}</TableCell>
+                    <TableCell>{formatDate(job.updatedAt)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <TablePagination
+            component="div"
+            count={sortedJobs.length}
+            page={page}
+            onPageChange={(e, newPage) => setPage(newPage)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(Number(e.target.value))
+              setPage(0)
+            }}
+            rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+          />
+        </Paper>
       )}
 
       <Dialog open={Boolean(selectedJob)} onClose={() => setSelectedJob(null)} maxWidth="sm" fullWidth>
