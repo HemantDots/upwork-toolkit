@@ -5,6 +5,9 @@ import {
   Box,
   Chip,
   Container,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Link,
   MenuItem,
@@ -35,6 +38,7 @@ const formatDate = (value: string | null) =>
 
 const Dashboard = () => {
   const [jobs, setJobs] = useState<StoredJob[] | null>(null)
+  const [selectedJob, setSelectedJob] = useState<StoredJob | null>(null)
 
   const [search, setSearch] = useState('')
   const [type, setType] = useState(ALL)
@@ -237,10 +241,19 @@ const Dashboard = () => {
             size="small"
             sx={{
               tableLayout: 'fixed',
-              '& td, & th': {
+              '& td': {
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
+              },
+              // Headers wrap instead of truncating — several labels (e.g.
+              // "Duration code", "Payment verified") are longer than their
+              // column's data ever needs to be, so ellipsis was cutting the
+              // label itself off rather than just long data values.
+              '& th': {
+                whiteSpace: 'normal',
+                lineHeight: 1.3,
+                verticalAlign: 'bottom',
               },
             }}
           >
@@ -250,39 +263,41 @@ const Dashboard = () => {
                 <TableCell sx={{ width: 90 }}>Type</TableCell>
                 <TableCell sx={{ width: 260 }}>Description</TableCell>
                 <TableCell sx={{ width: 130 }}>Experience level</TableCell>
-                <TableCell sx={{ width: 150 }}>Weekly hours</TableCell>
-                <TableCell sx={{ width: 130 }}>Duration label</TableCell>
+                <TableCell sx={{ width: 190 }}>Weekly hours</TableCell>
+                <TableCell sx={{ width: 160 }}>Duration label</TableCell>
                 <TableCell sx={{ width: 110 }}>Duration code</TableCell>
-                <TableCell sx={{ width: 110 }}>Proposals tier</TableCell>
+                <TableCell sx={{ width: 130 }}>Proposals tier</TableCell>
                 <TableCell sx={{ width: 100 }}>Fixed price</TableCell>
                 <TableCell sx={{ width: 90 }}>Hourly min</TableCell>
                 <TableCell sx={{ width: 90 }}>Hourly max</TableCell>
                 <TableCell sx={{ width: 120 }}>Payment verified</TableCell>
                 <TableCell sx={{ width: 110 }}>Client feedback</TableCell>
-                <TableCell sx={{ width: 100 }}>Client spent</TableCell>
-                <TableCell sx={{ width: 120 }}>Client country</TableCell>
+                <TableCell sx={{ width: 130 }}>Client spent</TableCell>
+                <TableCell sx={{ width: 170 }}>Client country</TableCell>
                 <TableCell sx={{ width: 70 }}>Job URL</TableCell>
                 <TableCell sx={{ width: 90 }}>Proposal URL</TableCell>
                 <TableCell sx={{ width: 220 }}>Skills</TableCell>
-                <TableCell sx={{ width: 150 }}>Renewed on</TableCell>
-                <TableCell sx={{ width: 150 }}>Created on</TableCell>
-                <TableCell sx={{ width: 150 }}>First seen</TableCell>
-                <TableCell sx={{ width: 150 }}>Updated at</TableCell>
+                <TableCell sx={{ width: 185 }}>Renewed on</TableCell>
+                <TableCell sx={{ width: 185 }}>Created on</TableCell>
+                <TableCell sx={{ width: 185 }}>First seen</TableCell>
+                <TableCell sx={{ width: 185 }}>Updated at</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredJobs.map((job) => (
                 <TableRow key={job.ciphertext} hover>
-                  <TableCell>
-                    <Tooltip title={job.title}>
-                      <span>{job.title}</span>
-                    </Tooltip>
+                  <TableCell
+                    onClick={() => setSelectedJob(job)}
+                    sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                  >
+                    {job.title}
                   </TableCell>
                   <TableCell>{job.type}</TableCell>
-                  <TableCell>
-                    <Tooltip title={job.description}>
-                      <span>{job.description}</span>
-                    </Tooltip>
+                  <TableCell
+                    onClick={() => setSelectedJob(job)}
+                    sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                  >
+                    {job.description}
                   </TableCell>
                   <TableCell>{cell(job.experienceLevel)}</TableCell>
                   <TableCell>{cell(job.weeklyHours)}</TableCell>
@@ -337,6 +352,56 @@ const Dashboard = () => {
           </Table>
         </TableContainer>
       )}
+
+      <Dialog open={Boolean(selectedJob)} onClose={() => setSelectedJob(null)} maxWidth="sm" fullWidth>
+        {selectedJob && (
+          <>
+            <DialogTitle>{selectedJob.title}</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                <Chip size="small" label={selectedJob.type} />
+                {selectedJob.experienceLevel && (
+                  <Chip size="small" label={selectedJob.experienceLevel} />
+                )}
+                {selectedJob.fixedPriceAmount ? (
+                  <Chip size="small" label={`$${selectedJob.fixedPriceAmount} fixed`} />
+                ) : selectedJob.hourlyBudgetMin ? (
+                  <Chip
+                    size="small"
+                    label={`$${selectedJob.hourlyBudgetMin}-$${selectedJob.hourlyBudgetMax}/hr`}
+                  />
+                ) : null}
+                {selectedJob.clientCountry && (
+                  <Chip size="small" label={selectedJob.clientCountry} />
+                )}
+              </Box>
+
+              <Typography
+                component="div"
+                sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                dangerouslySetInnerHTML={{ __html: selectedJob.description }}
+              />
+
+              {selectedJob.skills.length > 0 && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 2 }}>
+                  {selectedJob.skills.map((s) => (
+                    <Chip key={s} size="small" label={s} />
+                  ))}
+                </Box>
+              )}
+
+              <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
+                <Link href={selectedJob.jobUrl} target="_blank" rel="noopener noreferrer">
+                  Open job on Upwork
+                </Link>
+                <Link href={selectedJob.proposalUrl} target="_blank" rel="noopener noreferrer">
+                  Open proposal page
+                </Link>
+              </Box>
+            </DialogContent>
+          </>
+        )}
+      </Dialog>
     </Container>
   )
 }
