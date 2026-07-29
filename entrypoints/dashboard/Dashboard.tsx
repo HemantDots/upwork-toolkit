@@ -60,6 +60,74 @@ const stripHtml = (value: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const parseKeywords = (query: string) =>
+  query
+    .split(',')
+    .map((keyword) => keyword.trim())
+    .filter(Boolean)
+
+const keywordRegex = (keywords: string[]) =>
+  new RegExp(`(${keywords.map(escapeRegExp).join('|')})`, 'gi')
+
+const matchesAnyKeyword = (text: string, keywords: string[]) => {
+  if (!keywords.length) return true
+  const lower = text.toLowerCase()
+  return keywords.some((keyword) => lower.includes(keyword.toLowerCase()))
+}
+
+// Highlights matches inside an HTML string without corrupting markup — only
+// text nodes are touched; the split's tag-capturing group passes `<...>`
+// segments straight through untouched.
+const highlightHtml = (html: string, query: string, markColor: string) => {
+  const keywords = parseKeywords(query)
+  if (!keywords.length) return html
+
+  const regex = keywordRegex(keywords)
+  return html.replace(/(<[^>]*>)|([^<]+)/g, (match, tag, text) =>
+    tag
+      ? tag
+      : text.replace(
+          regex,
+          (m: string) =>
+            `<mark style="background-color:${markColor};color:inherit;border-radius:2px">${m}</mark>`
+        )
+  )
+}
+
+const Highlight = (props: { text: string; query: string }) => {
+  const theme = useTheme()
+  const keywords = parseKeywords(props.query)
+
+  if (!keywords.length) return <>{props.text}</>
+
+  const parts = props.text.split(keywordRegex(keywords))
+  const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase())
+
+  return (
+    <>
+      {parts.map((part, i) =>
+        lowerKeywords.includes(part.toLowerCase()) ? (
+          <Box
+            key={i}
+            component="mark"
+            sx={{
+              backgroundColor: theme.palette.mode === 'dark' ? '#8a6d00' : '#fff59d',
+              color: 'inherit',
+              borderRadius: '2px',
+            }}
+          >
+            {part}
+          </Box>
+        ) : (
+          part
+        )
+      )}
+    </>
+  )
+}
+
 const formatBudgetPlain = (job: StoredJob) => {
   if (job.fixedPriceAmount) return `$${job.fixedPriceAmount} fixed`
   if (job.hourlyBudgetMin) return `$${job.hourlyBudgetMin}-$${job.hourlyBudgetMax}/hr`
@@ -185,18 +253,12 @@ const Dashboard = () => {
   }, [jobs])
 
   const filteredJobs = useMemo(() => {
-    const titleQuery = titleSearch.trim().toLowerCase()
-    const descriptionQuery = descriptionSearch.trim().toLowerCase()
+    const titleKeywords = parseKeywords(titleSearch)
+    const descriptionKeywords = parseKeywords(descriptionSearch)
 
     return (jobs ?? []).filter((job) => {
-      if (titleQuery && !job.title.toLowerCase().includes(titleQuery)) return false
-
-      if (
-        descriptionQuery &&
-        !stripHtml(job.description).toLowerCase().includes(descriptionQuery)
-      ) {
-        return false
-      }
+      if (!matchesAnyKeyword(job.title, titleKeywords)) return false
+      if (!matchesAnyKeyword(stripHtml(job.description), descriptionKeywords)) return false
 
       if (type !== ALL && job.type !== type) return false
       if (experienceLevel !== ALL && job.experienceLevel !== experienceLevel) return false
@@ -373,6 +435,7 @@ const Dashboard = () => {
           <TextField
             size="small"
             label="Search title"
+            placeholder="e.g. react, vue"
             value={titleSearch}
             onChange={(e) => setTitleSearch(e.target.value)}
             sx={{ minWidth: 200 }}
@@ -381,6 +444,7 @@ const Dashboard = () => {
           <TextField
             size="small"
             label="Search description"
+            placeholder="e.g. react, vue"
             value={descriptionSearch}
             onChange={(e) => setDescriptionSearch(e.target.value)}
             sx={{ minWidth: 200 }}
@@ -545,14 +609,14 @@ const Dashboard = () => {
                       onClick={() => setSelectedJob(job)}
                       sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
                     >
-                      {job.title}
+                      <Highlight text={job.title} query={titleSearch} />
                     </TableCell>
                     <TableCell>{job.type}</TableCell>
                     <TableCell
                       onClick={() => setSelectedJob(job)}
                       sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
                     >
-                      {job.description}
+                      <Highlight text={stripHtml(job.description)} query={descriptionSearch} />
                     </TableCell>
                     <TableCell>{cell(job.experienceLevel)}</TableCell>
                     <TableCell>{cell(job.weeklyHours)}</TableCell>
@@ -625,7 +689,9 @@ const Dashboard = () => {
       <Dialog open={Boolean(selectedJob)} onClose={() => setSelectedJob(null)} maxWidth="sm" fullWidth>
         {selectedJob && (
           <>
-            <DialogTitle>{selectedJob.title}</DialogTitle>
+            <DialogTitle>
+              <Highlight text={selectedJob.title} query={titleSearch} />
+            </DialogTitle>
             <DialogContent dividers>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
                 <Chip size="small" label={selectedJob.type} />
@@ -648,7 +714,13 @@ const Dashboard = () => {
               <Typography
                 component="div"
                 sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-                dangerouslySetInnerHTML={{ __html: selectedJob.description }}
+                dangerouslySetInnerHTML={{
+                  __html: highlightHtml(
+                    selectedJob.description,
+                    descriptionSearch,
+                    theme.palette.mode === 'dark' ? '#8a6d00' : '#fff59d'
+                  ),
+                }}
               />
 
               {selectedJob.skills.length > 0 && (
