@@ -2,7 +2,16 @@ export enum Message {
   OPEN_PAGE = 'OPEN_PAGE',
   PLAY_SOUND = 'PLAY_SOUND',
   GENERATE_COVER_LETTER = 'GENERATE_COVER_LETTER',
+  CHECK_JOBS_NOW = 'CHECK_JOBS_NOW',
 }
+
+export type CheckJobsNowMessage = {
+  type: Message.CHECK_JOBS_NOW
+}
+
+export type CheckJobsNowResponse =
+  | { success: true }
+  | { success: false; error: string }
 
 export type GenerateCoverLetterMessage = {
   prompt: string
@@ -40,9 +49,15 @@ const isGenerateCoverLetterMessage = (
   message.type === Message.GENERATE_COVER_LETTER &&
   typeof message.prompt === 'string'
 
+const isCheckJobsNowMessage = (
+  message: any
+): message is CheckJobsNowMessage =>
+  message && message.type === Message.CHECK_JOBS_NOW
+
 export default {
   isPlaySoundMessage,
   isOpenPageMessage,
   isGenerateCoverLetterMessage,
+  isCheckJobsNowMessage,
   Message,
 }

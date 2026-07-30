@@ -3,21 +3,19 @@ import openAiApi from '@/api/openai'
 import extension, { Cycles } from '@/utils/extension'
 import stateStorage, { GlobalState } from '@/utils/globalState'
 import openAiApiKeyStorage from '@/utils/openAiApiKey'
-import runtime, { GenerateCoverLetterResponse } from '@/utils/runtime'
+import runtime, {
+  CheckJobsNowResponse,
+  GenerateCoverLetterResponse,
+} from '@/utils/runtime'
 import { captureException } from '@/utils/sentry'
 import dailyReport from './dailyReport'
 import fetchJobs from './fetchJobs'
 
-const ENABLED_SCRIPTS: {
+const OTHER_SCRIPTS: {
   cycleName: Cycles
   delayInMinutes: number
   periodInMinutes: number
 }[] = [
-  {
-    cycleName: extension.Cycles.FETCH_JOBS,
-    delayInMinutes: extension.debugEnabled ? 5 / 60 : 0, // 5 seconds in dev
-    periodInMinutes: 1,
-  },
   {
     cycleName: extension.Cycles.DAILY_REPORT,
     delayInMinutes: 10 / 60, // 10 seconds
@@ -25,12 +23,29 @@ const ENABLED_SCRIPTS: {
   },
 ]
 
+const enableFetchJobsAlarm = (checkIntervalMinutes: number) =>
+  browser.alarms.create(extension.Cycles.FETCH_JOBS, {
+    delayInMinutes: extension.debugEnabled ? 5 / 60 : 0, // 5 seconds in dev
+    periodInMinutes: checkIntervalMinutes,
+  })
+
 const enableScripts = async () => {
+  const globalState = await stateStorage.get()
   const alarms = await browser.alarms.getAll()
   const alarmNames = alarms.map((alarm) => alarm.name)
 
+  // Automatic checking never starts on its own before the user has actually
+  // been asked — the first-run picker in Home.tsx is what sets this to true.
+  if (
+    globalState.checkMode === 'automatic' &&
+    globalState.automationConsentAcknowledged &&
+    !alarmNames.includes(extension.Cycles.FETCH_JOBS)
+  ) {
+    await enableFetchJobsAlarm(globalState.checkIntervalMinutes)
+  }
+
   await Promise.all(
-    ENABLED_SCRIPTS.map(async (script) => {
+    OTHER_SCRIPTS.map(async (script) => {
       if (!alarmNames.includes(script.cycleName)) {
         await browser.alarms.create(script.cycleName, {
           delayInMinutes: script.delayInMinutes,
@@ -130,7 +145,36 @@ export default defineBackground({
       }
     })
 
-    browser.runtime.onMessage.addListener((message) => {
+    stateStorage.addEventListener(async (newState, oldState) => {
+      if (!newState) {
+        return
+      }
+
+      const modeChanged = newState.checkMode !== oldState?.checkMode
+      const intervalChanged =
+        newState.checkIntervalMinutes !== oldState?.checkIntervalMinutes
+
+      if (!modeChanged && !intervalChanged) {
+        return
+      }
+
+      try {
+        if (
+          newState.checkMode === 'manual' ||
+          !newState.automationConsentAcknowledged
+        ) {
+          await browser.alarms.clear(extension.Cycles.FETCH_JOBS)
+        } else {
+          // browser.alarms.create with an existing name resets its period,
+          // so this also picks up interval changes while already automatic.
+          await enableFetchJobsAlarm(newState.checkIntervalMinutes)
+        }
+      } catch (error) {
+        captureException(error)
+      }
+    })
+
+    browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (runtime.isOpenPageMessage(message)) {
         const process = async () => {
           const currentWindow = await browser.windows.getLastFocused()
@@ -147,7 +191,28 @@ export default defineBackground({
         }
 
         process()
+        return
       }
+
+      if (runtime.isCheckJobsNowMessage(message)) {
+        fetchJobs()
+          .then(() => sendResponse({ success: true } as CheckJobsNowResponse))
+          .catch((error) => {
+            captureException(error)
+            sendResponse({
+              success: false,
+              error: String(error),
+            } as CheckJobsNowResponse)
+          })
+
+        // Chrome's native messaging API only keeps the response channel open
+        // when the listener returns the literal `true` — a returned Promise
+        // (which is what an async function/`.then` chain gives you) is not
+        // recognized the same way, unlike Firefox's webextension-polyfill.
+        return true
+      }
+
+      return undefined
     })
 
     browser.runtime.onConnect.addListener((port) => {

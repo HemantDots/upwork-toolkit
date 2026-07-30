@@ -15,6 +15,8 @@ export type Schedule = {
   to: string
 }
 
+export type CheckMode = 'automatic' | 'manual'
+
 /**
  * Global state persisted in cloud storage
  */
@@ -45,6 +47,10 @@ export type GlobalState = {
   usTimeFormat: boolean
 
   usernameHash: string | null
+
+  checkMode: CheckMode
+  checkIntervalMinutes: number
+  automationConsentAcknowledged: boolean
 }
 
 const getDefaultState = (): GlobalState => ({
@@ -70,10 +76,23 @@ const getDefaultState = (): GlobalState => ({
   usTimeFormat: false,
 
   usernameHash: null,
+
+  checkMode: 'automatic',
+  checkIntervalMinutes: 15,
+  automationConsentAcknowledged: false,
 })
 
-const get = () =>
-  storage.getItem<GlobalState>(namespace, { fallback: getDefaultState() })
+const get = async (): Promise<GlobalState> => {
+  // Merged with defaults on every read (not just on the onInstalled/"update"
+  // event) so a profile that predates a newly-added field — e.g. an existing
+  // install, or a dev reload that doesn't fire onInstalled — still gets a
+  // real value instead of `undefined` for that field.
+  const storedState = await storage.getItem<Partial<GlobalState>>(namespace, {
+    fallback: {},
+  })
+
+  return { ...getDefaultState(), ...storedState }
+}
 
 const save = async (
   arg: Partial<GlobalState> | ((previousState: GlobalState) => GlobalState)
