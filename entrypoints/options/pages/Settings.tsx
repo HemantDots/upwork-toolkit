@@ -14,7 +14,6 @@ import {
   MoreTime,
   OpenInNew,
   PowerSettingsNew,
-  Stop,
   Sync,
   VolumeUp,
 } from '@mui/icons-material'
@@ -72,12 +71,21 @@ const Settings = () => {
     null
   )
 
-  const onKillSwitch = async () => {
-    await storage.setState({ checkMode: 'manual' })
-    await browser.alarms.clear(extension.Cycles.FETCH_JOBS)
+  const onCheckModeChange = async (isAutomatic: boolean) => {
+    if (!isAutomatic) {
+      // Clear the alarm directly here instead of only relying on the
+      // background script's listener to react to the mode change, so we can
+      // show real, verified proof rather than just a toggle position.
+      await storage.setState({ checkMode: 'manual' })
+      await browser.alarms.clear(extension.Cycles.FETCH_JOBS)
 
-    const remainingAlarms = await browser.alarms.getAll()
-    setKillSwitchAlarms(remainingAlarms.map((alarm) => alarm.name))
+      const remainingAlarms = await browser.alarms.getAll()
+      setKillSwitchAlarms(remainingAlarms.map((alarm) => alarm.name))
+      return
+    }
+
+    setKillSwitchAlarms(null)
+    await storage.setState({ checkMode: 'automatic' })
   }
 
   useEffect(() => {
@@ -248,11 +256,7 @@ const Settings = () => {
           secondaryAction={
             <Switch
               checked={storage.globalState.checkMode === 'automatic'}
-              onChange={(e, isAutomatic) =>
-                storage.setState({
-                  checkMode: isAutomatic ? 'automatic' : 'manual',
-                })
-              }
+              onChange={(e, isAutomatic) => onCheckModeChange(isAutomatic)}
             />
           }
         >
@@ -265,6 +269,23 @@ const Settings = () => {
             secondary="Off: only checks when you click Check now. On: checks in the background automatically."
           />
         </ListItem>
+
+        <Collapse in={storage.globalState.checkMode === 'manual' && killSwitchAlarms !== null}>
+          <ListItem sx={{ pl: 7, pr: 2.25 }}>
+            <Alert
+              sx={{ width: '100%' }}
+              severity={
+                killSwitchAlarms?.includes(extension.Cycles.FETCH_JOBS)
+                  ? 'warning'
+                  : 'success'
+              }
+            >
+              {killSwitchAlarms?.includes(extension.Cycles.FETCH_JOBS)
+                ? `Heads up — still scheduled: ${killSwitchAlarms.join(', ')}`
+                : "You're all set — no background checks are running."}
+            </Alert>
+          </ListItem>
+        </Collapse>
 
         <Collapse in={storage.globalState.checkMode === 'automatic'}>
           <ListItem
@@ -326,40 +347,6 @@ const Settings = () => {
               />
             </ListItem>
           </Collapse>
-        </Collapse>
-
-        <ListItem
-          secondaryAction={
-            <Button color="error" variant="outlined" onClick={onKillSwitch}>
-              Stop now
-            </Button>
-          }
-        >
-          <ListItemIcon>
-            <Stop />
-          </ListItemIcon>
-
-          <ListItemText
-            primary="Stop all automatic checking"
-            secondary="Switches to manual mode and clears any scheduled background task — with visible confirmation below"
-          />
-        </ListItem>
-
-        <Collapse in={killSwitchAlarms !== null}>
-          <ListItem sx={{ pl: 7, pr: 2.25 }}>
-            <Alert
-              sx={{ width: '100%' }}
-              severity={
-                killSwitchAlarms?.includes(extension.Cycles.FETCH_JOBS)
-                  ? 'warning'
-                  : 'success'
-              }
-            >
-              {killSwitchAlarms?.includes(extension.Cycles.FETCH_JOBS)
-                ? `Still scheduled: ${killSwitchAlarms.join(', ')}`
-                : '0 job-check background tasks running — confirmed.'}
-            </Alert>
-          </ListItem>
         </Collapse>
 
         <Dialog
